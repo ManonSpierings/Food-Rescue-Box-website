@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Food Rescue Boxr</title>
+  <style>
+    :root{--bg:#e9a76f;--card:#ffffff;--accent:#6ca66e;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial; margin:0; background:var(--bg); color:#111}
+    .container{max-width:960px;margin:28px auto;padding:20px}
+    header{display:flex;gap:16px;align-items:center}
+    h1{margin:0;font-size:1.4rem}
+    p.lead{margin:2px 0 0;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:18px;margin-top:18px}
+    .card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 20px rgba(16,24,40,0.04)}
+    .form-row{display:flex;gap:8px}
+    input,button,select{padding:8px 10px;border-radius:8px;border:1px solid #e6e9ee;font-size:0.95rem}
+    button{background:var(--accent);color:#fff;border:none;cursor:pointer}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(43,138,62,0.12)}
+    ul{list-style:none;padding:0;margin:0}
+    .player{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:8px;margin-bottom:8px;border:1px solid #f0f2f5}
+    .player .meta{display:flex;gap:12px;align-items:center}
+    .avatar{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;background:#ebf8ef;color:var(--accent);font-weight:600}
+    .controls{display:flex;gap:8px;align-items:center}
+    .small{font-size:0.85rem;color:var(--muted)}
+    .points{font-weight:700;font-size:1.1rem}
+    .badge{padding:4px 8px;border-radius:999px;background:#f1fdf2;color:var(--accent);font-weight:600;border:1px solid rgba(43,138,62,0.06)}
+    .leaderboard-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .help{font-size:0.9rem;color:var(--muted);margin-top:10px}
+    footer{margin-top:18px;text-align:center;color:var(--muted);font-size:0.9rem}
+    @media (max-width:880px){.grid{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <img src="website logo.png" alt="Projectlogo" class="logo">
+      <div>
+        <h1>Food Rescue Box-punten</h1>
+        <p class="lead">Eenvoudige puntenteller voor je Food Rescue Box — werkt offline (localStorage).</p>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <div class="leaderboard-title">
+          <div>
+            <strong>Deelnemers</strong>
+            <div class="small">Maak deelnemers aan en noteer punten per gered recept</div>
+          </div>
+          <div>
+            <button id="exportBtn" class="ghost">Export JSON</button>
+            <button id="importBtn" class="ghost">Import</button>
+            <input id="importFile" type="file" accept="application/json" style="display:none">
+          </div>
+        </div>
+
+        <form id="addPlayerForm" class="form-row" onsubmit="return false;">
+          <input id="playerName" placeholder="Naam (bv. Sanne)" required>
+          <button id="addPlayerBtn">+ Voeg toe</button>
+        </form>
+
+        <div style="margin-top:12px">
+          <ul id="playersList"></ul>
+        </div>
+
+        <div class="help">Tip: klik op de plusknopjes om snel punten toe te voegen of gebruik het handmatige veld.</div>
+      </section>
+
+      <aside class="card">
+        <strong>Scorebord & handmatig punten toevoegen</strong>
+        <div style="margin-top:12px">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <select id="presetSelect">
+              <option value="10">Grote redding (10 pts)</option>
+              <option value="5">Kleine redding (5 pts)</option>
+              <option value="1">Snack (1 pt)</option>
+            </select>
+            <button id="givePointsBtn">Geef punten</button>
+          </div>
+
+          <div style="display:flex;gap:8px;flex-direction:column">
+            <button id="resetBtn" class="ghost">Reset alle punten</button>
+            <button id="clearBtn" class="ghost">Verwijder alle deelnemers</button>
+          </div>
+        </div>
+
+        <div style="margin-top:14px">
+          <strong>Leaderboard</strong>
+          <div id="leaderboard" style="margin-top:10px"></div>
+        </div>
+      </aside>
+    </div>
+
+    <footer>
+      Gemaakt door ChatGPT
+    </footer>
+  </div>
+
+  <script>
+    // ---------- Data management (localStorage) ----------
+    const STORAGE_KEY = 'redders_v1';
+
+    function loadData(){
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return [];
+      try { return JSON.parse(raw); } catch(e){ return [] }
+    }
+    function saveData(data){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+    // ---------- App state ----------
+    let players = loadData();
+
+    // ---------- DOM refs ----------
+    const playersList = document.getElementById('playersList');
+    const addPlayerForm = document.getElementById('addPlayerForm');
+    const playerNameInput = document.getElementById('playerName');
+    const addPlayerBtn = document.getElementById('addPlayerBtn');
+    const leaderboardEl = document.getElementById('leaderboard');
+    const presetSelect = document.getElementById('presetSelect');
+    const manualPoints = document.getElementById('manualPoints');
+    const givePointsBtn = document.getElementById('givePointsBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
+    const importFile = document.getElementById('importFile');
+
+    // ---------- Helpers ----------
+    function uid(){ return Math.random().toString(36).slice(2,9); }
+    function getPlayer(idxOrId){
+      if(typeof idxOrId === 'number') return players[idxOrId];
+      return players.find(p=>p.id===idxOrId);
+    }
+
+    // ---------- Render ----------
+    function renderPlayers(){
+      playersList.innerHTML = '';
+      players.forEach((p, i)=>{
+        const li = document.createElement('li');
+        li.className = 'player';
+        li.innerHTML = `
+          <div class="meta">
+            <div class="avatar">${p.name.slice(0,1).toUpperCase()}</div>
+            <div>
+              <div><strong>${escapeHtml(p.name)}</strong> <span class="small">(${p.id})</span></div>
+              <div class="small">Aantal reddingen: ${p.history.length}</div>
+            </div>
+          </div>
+          <div class="controls">
+            <div class="points">${p.points}</div>
+            <div style="display:flex;gap:6px">
+              <button class="ghost" data-action="add" data-id="${p.id}" data-amt="10">+10</button>
+              <button class="ghost" data-action="add" data-id="${p.id}" data-amt="5">+5</button>
+              <button class="ghost" data-action="add" data-id="${p.id}" data-amt="1">+1</button>
+              <button class="ghost" data-action="undo" data-id="${p.id}">undo</button>
+            </div>
+          </div>
+        `;
+        playersList.appendChild(li);
+      });
+    }
+
+    function renderLeaderboard(){
+      const sorted = [...players].sort((a,b)=>b.points - a.points);
+      if(sorted.length===0){ leaderboardEl.innerHTML = '<div class="small">Nog geen spelers</div>'; return }
+      leaderboardEl.innerHTML = sorted.map((p, i)=>{
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed #f0f2f5">
+          <div><strong>${escapeHtml(p.name)}</strong> <div class="small">${p.history.length} reddingen</div></div>
+          <div class="badge">${p.points} pts</div>
+        </div>`;
+      }).join('');
+    }
+
+    // ---------- Actions ----------
+    function addPlayer(name){
+      const trimmed = (name||'').trim();
+      if(!trimmed) return alert('Voer een naam in');
+      players.push({id: uid(), name: trimmed, points: 0, history: []});
+      saveData(players); renderPlayers(); renderLeaderboard(); playerNameInput.value='';
+    }
+
+    function addPointsTo(id, amount){
+      const p = getPlayer(id); if(!p) return;
+      p.points += amount; p.history.push({ts: Date.now(), pts: amount});
+      saveData(players); renderPlayers(); renderLeaderboard();
+    }
+
+    function undoLast(id){
+      const p = getPlayer(id); if(!p) return;
+      const last = p.history.pop();
+      if(last){ p.points -= last.pts; if(p.points<0) p.points=0; saveData(players); renderPlayers(); renderLeaderboard(); }
+    }
+
+    function resetPoints(){ if(!confirm('Weet je zeker dat je alle punten wilt resetten?')) return; players.forEach(p=>{p.points=0; p.history=[]}); saveData(players); renderPlayers(); renderLeaderboard(); }
+    function clearAll(){ if(!confirm('Verwijder je alle deelnemers?')) return; players = []; saveData(players); renderPlayers(); renderLeaderboard(); }
+
+    // ---------- Utilities ----------
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]}); }
+
+    // ---------- Event wiring ----------
+    addPlayerForm.addEventListener('submit', ()=>{ addPlayer(playerNameInput.value); });
+    addPlayerBtn.addEventListener('click', ()=> addPlayer(playerNameInput.value));
+
+    playersList.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button'); if(!btn) return;
+      const action = btn.dataset.action; const id = btn.dataset.id; const amt = Number(btn.dataset.amt||0);
+      if(action==='add') addPointsTo(id, amt);
+      if(action==='undo') undoLast(id);
+    });
+
+    givePointsBtn.addEventListener('click', ()=>{
+      const amount = Number(presetSelect.value);
+      const selectedName = prompt('Voor wie geef je punten? Vul naam of id in. (Exacte match vereist)');
+      if(!selectedName) return;
+      const pl = players.find(x=>x.name===selectedName || x.id===selectedName);
+      if(!pl){ alert('Deelnemer niet gevonden. Klik een deelnemer aan of controleer naam/id.'); return }
+      addPointsTo(pl.id, amount);
+    });
+
+    resetBtn.addEventListener('click', resetPoints);
+    clearBtn.addEventListener('click', clearAll);
+
+    exportBtn.addEventListener('click', ()=>{
+      const dataStr = JSON.stringify(players, null, 2);
+      const blob = new Blob([dataStr],{type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='redders_export.json'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    importBtn.addEventListener('click', ()=> importFile.click());
+    importFile.addEventListener('change', async (e)=>{
+      const f = e.target.files[0]; if(!f) return; const txt = await f.text();
+      try{ const parsed = JSON.parse(txt); if(Array.isArray(parsed)) { players = parsed; saveData(players); renderPlayers(); renderLeaderboard(); alert('Import succesvol!'); } else alert('Onjuist formaat'); }catch(err){ alert('Kon niet importeren: ' + err.message) }
+      importFile.value='';
+    });
+
+    // initial render
+    renderPlayers(); renderLeaderboard();
+
+    // small demo data if empty (uncomment to seed on first load)
+    if(players.length===0){
+      // players = [ {id:uid(), name:'Sanne', points:35, history:[{ts:Date.now(),pts:10}]}, {id:uid(), name:'Ibrahim', points:20, history:[] } ]; saveData(players); renderPlayers(); renderLeaderboard();
+    }
+  </script>
+</body>
+</html>
